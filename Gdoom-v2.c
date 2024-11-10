@@ -48,11 +48,15 @@ void generateWallTexture(SDL_Renderer* renderer, SDL_Texture* texture, int width
     SDL_Surface* surface = SDL_CreateRGBSurface(0, width, height, 32, 0xFF000000, 0x00FF0000, 0x0000FF00, 0x000000FF);
     Uint32* pixels = (Uint32*)surface->pixels;
 
-    // Fill the surface with some color pattern (e.g., a simple gradient or stripe pattern)
+    // Fill the surface with a simple striped pattern (black and white)
     for (int y = 0; y < height; y++) {
         for (int x = 0; x < width; x++) {
-            int color = (x + y) % 2 == 0 ? SDL_MapRGB(surface->format, 255, 255, 255) : SDL_MapRGB(surface->format, 100, 100, 100);
-            pixels[y * width + x] = color;
+            // A simple stripe pattern
+            if ((x / 10) % 2 == 0) {
+                pixels[y * width + x] = SDL_MapRGB(surface->format, 255, 255, 255); // White
+            } else {
+                pixels[y * width + x] = SDL_MapRGB(surface->format, 100, 100, 100); // Gray
+            }
         }
     }
 
@@ -80,10 +84,10 @@ void renderScene(SDL_Renderer* renderer, SDL_Texture* wallTexture) {
         float deltaDistY = fabs(1 / rayDirY);
         float perpWallDist;
 
-        // Which direction to step in x or y (either +1 or -1)
+        // Step direction for x and y
         int stepX, stepY;
-        int hit = 0;  // was there a wall hit?
-        int side;     // was a NS or EW wall hit?
+        int hit = 0;  // Hit flag
+        int side;     // Side flag
 
         // Calculate step and initial sideDist
         if (rayDirX < 0) {
@@ -101,7 +105,7 @@ void renderScene(SDL_Renderer* renderer, SDL_Texture* wallTexture) {
             sideDistY = (mapY + 1.0 - posY) * deltaDistY;
         }
 
-        // Perform DDA
+        // Perform DDA (Digital Differential Analyzer)
         while (hit == 0) {
             if (sideDistX < sideDistY) {
                 sideDistX += deltaDistX;
@@ -116,70 +120,32 @@ void renderScene(SDL_Renderer* renderer, SDL_Texture* wallTexture) {
             if (worldMap[mapX][mapY] > 0) hit = 1;
         }
 
-        // Calculate distance projected on camera direction (perpendicular distance)
+        // Calculate perpendicular wall distance
         if (side == 0) {
             perpWallDist = (mapX - posX + (1 - stepX) / 2) / rayDirX;
         } else {
             perpWallDist = (mapY - posY + (1 - stepY) / 2) / rayDirY;
         }
 
-        // Calculate height of line to draw on screen
+        // Calculate the height of the wall line
         int lineHeight = (int)(SCREEN_HEIGHT / perpWallDist);
 
-        // Calculate draw start and end positions
+        // Calculate the start and end of the wall line
         int drawStart = -lineHeight / 2 + SCREEN_HEIGHT / 2;
         if (drawStart < 0) drawStart = 0;
         int drawEnd = lineHeight / 2 + SCREEN_HEIGHT / 2;
         if (drawEnd >= SCREEN_HEIGHT) drawEnd = SCREEN_HEIGHT - 1;
 
         // Texture mapping
-        int texX = (int)(perpWallDist * 64) % 64;
+        int texX = (int)(perpWallDist * 64) % 64;  // For now, use simple texture coordinates
         if (side == 0 && rayDirX > 0) texX = 64 - texX - 1;
         if (side == 1 && rayDirY < 0) texX = 64 - texX - 1;
 
-        SDL_Rect srcRect = { texX * 2, 0, 2, 64 };
+        SDL_Rect srcRect = { texX * 2, 0, 2, 64 };  // Select part of the texture to display
         SDL_Rect dstRect = { x, drawStart, 1, drawEnd - drawStart };
 
+        // Draw the wall texture
         SDL_RenderCopy(renderer, wallTexture, &srcRect, &dstRect);
-    }
-}
-
-// Handle player input for movement and rotation
-void handleInput(SDL_Event* e) {
-    const float moveSpeed = MOVESPEED;  
-    const float rotSpeed = ROTATESPEED; 
-
-    if (e->type == SDL_KEYDOWN) {
-        switch (e->key.keysym.sym) {
-            case SDLK_w:  
-                if (worldMap[(int)(posX + dirX * moveSpeed)][(int)(posY)] == 0) posX += dirX * moveSpeed;
-                if (worldMap[(int)(posX)][(int)(posY + dirY * moveSpeed)] == 0) posY += dirY * moveSpeed;
-                break;
-            case SDLK_s:  
-                if (worldMap[(int)(posX - dirX * moveSpeed)][(int)(posY)] == 0) posX -= dirX * moveSpeed;
-                if (worldMap[(int)(posX)][(int)(posY - dirY * moveSpeed)] == 0) posY -= dirY * moveSpeed;
-                break;
-            case SDLK_a:  
-                {
-                    float oldDirX = dirX;
-                    dirX = dirX * cos(-rotSpeed) - dirY * sin(-rotSpeed);
-                    dirY = oldDirX * sin(-rotSpeed) + dirY * cos(-rotSpeed);
-                    float oldPlaneX = planeX;
-                    planeX = planeX * cos(-rotSpeed) - planeY * sin(-rotSpeed);
-                    planeY = oldPlaneX * sin(-rotSpeed) + planeY * cos(-rotSpeed);
-                }
-                break;
-            case SDLK_d:  
-                {
-                    float oldDirX = dirX;
-                    dirX = dirX * cos(rotSpeed) - dirY * sin(rotSpeed);
-                    dirY = oldDirX * sin(rotSpeed) + dirY * cos(rotSpeed);
-                    float oldPlaneX = planeX;
-                    planeX = planeX * cos(rotSpeed) - planeY * sin(rotSpeed);
-                    planeY = oldPlaneX * sin(rotSpeed) + planeY * cos(rotSpeed);
-                }
-                break;
-        }
     }
 }
 
@@ -200,8 +166,7 @@ int main(int argc, char* argv[]) {
     SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
 
     SDL_Texture* wallTexture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_STREAMING, 64, 64);
-
-    generateWallTexture(renderer, wallTexture, 64, 64);
+    generateWallTexture(renderer, wallTexture, 64, 64);  // Generate texture
 
     int running = 1;
     while (running) {
@@ -209,15 +174,15 @@ int main(int argc, char* argv[]) {
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT) {
                 running = 0;
-            } else {
-                handleInput(&e);  // Handle input
             }
         }
 
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255); // Set background color
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);  // Set background to black
         SDL_RenderClear(renderer);
-        renderScene(renderer, wallTexture);
-        SDL_RenderPresent(renderer);
+
+        renderScene(renderer, wallTexture);  // Render the scene
+
+        SDL_RenderPresent(renderer);  // Present the renderer
     }
 
     SDL_DestroyTexture(wallTexture);
@@ -227,4 +192,3 @@ int main(int argc, char* argv[]) {
 
     return 0;
 }
-
